@@ -34,6 +34,24 @@ def test_healthz_returns_ok(client):
     assert resp.get_json() == {"status": "ok"}
 
 
-def test_unknown_route_returns_404(client):
-    resp = client.get("/does-not-exist")
-    assert resp.status_code == 404
+def test_arbitrary_path_falls_back_to_the_index_page(client):
+    """The platform's ALB forwards the full, unstripped path prefix it
+    assigns a project (e.g. /api/v1/cicd-test) straight to the container —
+    it never rewrites it back to "/". A genuinely unknown path must still
+    render something real, not a bare 404, since it may just be this
+    project's own live-URL prefix."""
+    resp = client.get("/api/v1/cicd-test")
+    assert resp.status_code == 200
+    assert "hello from smartcd-test" in resp.get_data(as_text=True)
+
+
+def test_prefixed_healthz_path_still_returns_the_real_health_check(client):
+    resp = client.get("/api/v1/cicd-test/healthz")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"status": "ok"}
+
+
+def test_prefixed_hello_path_still_returns_the_real_json(client):
+    resp = client.get("/api/v1/cicd-test/api/hello")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"message": "hello from smartcd-test"}

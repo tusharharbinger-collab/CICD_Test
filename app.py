@@ -91,13 +91,17 @@ INDEX_HTML = """<!DOCTYPE html>
 """
 
 
-@app.get("/")
-def index():
+def _render_index():
     return INDEX_HTML.format(
         service_name=SERVICE_NAME,
         message="hello from smartcd-test",
         timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     )
+
+
+@app.get("/")
+def index():
+    return _render_index()
 
 
 @app.get("/api/hello")
@@ -108,6 +112,25 @@ def hello():
 @app.get("/healthz")
 def healthz():
     return jsonify({"status": "ok"}), 200
+
+
+# The platform's ALB routes a project behind a path prefix (e.g.
+# /api/v1/cicd-test) and forwards the FULL, unstripped path to the
+# container — it never rewrites it back to "/". Without this, every
+# real request through the live URL 404s even though the exact same
+# routes work perfectly under docker run/local testing, where nothing
+# prepends a prefix. This catches any path Flask's exact routes above
+# didn't already match, and still honors the last path segment so
+# "<prefix>/healthz" and "<prefix>/api/hello" keep their real meaning
+# no matter what prefix a given onboarding assigns.
+@app.get("/<path:path>")
+def catch_all(path):
+    tail = path.rstrip("/").rsplit("/", 1)[-1]
+    if tail == "healthz":
+        return jsonify({"status": "ok"}), 200
+    if tail == "hello":
+        return jsonify({"message": "hello from smartcd-test"})
+    return _render_index()
 
 
 if __name__ == "__main__":
